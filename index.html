@@ -89,10 +89,8 @@ body::after{content:'';position:fixed;inset:15px;border:1px solid rgba(201,168,7
 .cn-deco-line::before{content:'◈';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:7px;color:var(--gold);opacity:0.8;line-height:1}
 #cn-line2text{font-family:'Noto Serif TC',serif;font-size:clamp(11px,2.5vw,16px);font-weight:400;letter-spacing:0.28em;color:rgba(255,255,255,0.7);white-space:nowrap}
 
-/* Stats — production glass cards */
+/* Stats — glass cards with gold borders */
 .stats-grid{display:grid;gap:14px;max-width:660px;margin:0 auto;padding:12px 20px 36px}
-.stats-deco{grid-column:1/-1;text-align:center;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.18em;color:rgba(201,168,76,0.36);margin-bottom:4px}
-
 .stat-card{
   background:linear-gradient(145deg,rgba(255,255,255,0.10) 0%,rgba(255,255,255,0.05) 100%);
   border-top:1px solid rgba(201,168,76,0.4);border-bottom:1px solid rgba(201,168,76,0.4);
@@ -156,7 +154,8 @@ select option{background:#0d0d1a;color:var(--text)}
 .success-msg h2{font-family:'Noto Serif TC',serif;color:var(--gold-light);font-size:22px;margin-bottom:12px}
 .success-msg p{color:var(--text-muted);font-size:14px;line-height:2}
 
-@media(max-width:600px){.stats-grid{grid-template-columns:repeat(2,1fr)!important}
+@media(max-width:600px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)!important}
   .modal-header,.modal-body{padding-left:20px;padding-right:20px}
   .join-btn{padding:17px 40px;font-size:14px}
 }
@@ -223,7 +222,7 @@ select option{background:#0d0d1a;color:var(--text)}
       </div>
     </div>
 
-    <!-- Stats -->
+    <!-- Stats with animated counters -->
     <div class="stats-grid" id="sg">
       <div class="rv d1" data-r>
         <div class="stat-card">
@@ -233,19 +232,19 @@ select option{background:#0d0d1a;color:var(--text)}
       </div>
       <div class="rv d2" data-r>
         <div class="stat-card">
-          <span class="stat-num">200,314</span>
+          <span class="stat-num" id="counter-orders">0</span>
           <div class="stat-label">累計完成訂單</div>
         </div>
       </div>
       <div class="rv d3" data-r>
         <div class="stat-card">
-          <span class="stat-num">100+</span>
+          <span class="stat-num" id="counter-drivers">0</span>
           <div class="stat-label">上線司機</div>
         </div>
       </div>
       <div class="rv d4" data-r>
         <div class="stat-card">
-          <span class="stat-num">18,203,128</span>
+          <span class="stat-num" id="counter-earnings">0</span>
           <div class="stat-label">司機累積收入（元）</div>
         </div>
       </div>
@@ -396,7 +395,43 @@ document.getElementById('driverForm').addEventListener('submit',function(e){
 })();
 
 // ═══════════════════════════════════════════
-// THREE.JS — Venus particles (no hex particles)
+// ANIMATED COUNTERS
+// ═══════════════════════════════════════════
+function animateCounter(el,target,duration,formatter){
+  const start=performance.now();
+  function update(now){
+    const p=Math.min((now-start)/duration,1);
+    const e=p===1?1:1-Math.pow(2,-10*p);
+    el.textContent=formatter(Math.floor(e*target));
+    if(p<1)requestAnimationFrame(update);
+    else el.textContent=formatter(target);
+  }
+  requestAnimationFrame(update);
+}
+// Trigger counters when stats become visible
+var countersStarted=false;
+var counterObs=new IntersectionObserver(function(es){
+  if(countersStarted)return;
+  es.forEach(function(e){
+    if(e.isIntersecting){
+      countersStarted=true;
+      animateCounter(document.getElementById('counter-orders'),200314,2400,function(n){return n.toLocaleString('zh-TW')});
+      animateCounter(document.getElementById('counter-drivers'),100,1800,function(n){return n+'+'});
+      animateCounter(document.getElementById('counter-earnings'),18203128,2800,function(n){return n.toLocaleString('zh-TW')});
+    }
+  });
+},{threshold:0.3,root:document.getElementById('sc')});
+counterObs.observe(document.getElementById('sg'));
+
+// ═══════════════════════════════════════════
+// THREE.JS — 6-Phase Particle Journey
+// ═══════════════════════════════════════════
+// Phase 1  VENUS HERO      scroll 0.00–0.06
+// Phase 2  DISINTEGRATE     scroll 0.06–0.16  (explode outward)
+// Phase 3  STARDUST         scroll 0.16–0.45  (twinkling drift, stats appear)
+// Phase 4  BIRD SWIRL       scroll 0.45–0.62  (typhoon vortex)
+// Phase 5  REFORM           scroll 0.62–0.78  (gather into small Venus)
+// Phase 6  HOLD             scroll 0.78–1.00
 // ═══════════════════════════════════════════
 (function(){
 'use strict';
@@ -438,28 +473,43 @@ function syncDOM(){
   heroWX=hc.x;heroWY=hc.y;
 }
 
-const PC=mob?6000:10000;
+const PC=mob?10000:20000;
 const R=mob?3.2:4.0,RF_R=mob?1.0:1.5;
 
 const pos=new Float32Array(PC*3),col=new Float32Array(PC*3),sz=new Float32Array(PC),sd=new Float32Array(PC*4);
-const venusP=new Float32Array(PC*3),swirlP=new Float32Array(PC*3),reformP=new Float32Array(PC*3);
+const venusP=new Float32Array(PC*3),stardustP=new Float32Array(PC*3),swirlP=new Float32Array(PC*3),reformP=new Float32Array(PC*3);
+
+// Visible world bounds for stardust spread
+const spreadW=halfW*2.2,spreadH=halfH*2.2;
 
 for(let i=0;i<PC;i++){
   const i3=i*3,i4=i*4;
   sd[i4]=Math.random();sd[i4+1]=Math.random();sd[i4+2]=Math.random();sd[i4+3]=Math.random();
   sz[i]=.5+Math.random()*(mob?.9:1.2);
+
+  // Venus sphere
   const phi=Math.acos(1-2*(i+.5)/PC),theta=Math.PI*(3-Math.sqrt(5))*i;
   const vr=R*(.86+sd[i4]*.16);
   venusP[i3]=vr*Math.sin(phi)*Math.cos(theta);
   venusP[i3+1]=vr*Math.sin(phi)*Math.sin(theta);
   venusP[i3+2]=vr*Math.cos(phi);
-  const sa=sd[i4]*Math.PI*8+i*.003,sr=1+sd[i4+1]*4,sy=(sd[i4+2]-.5)*6;
+
+  // Stardust — random positions spread across full viewport
+  stardustP[i3]=(sd[i4]-.5)*spreadW;
+  stardustP[i3+1]=(sd[i4+1]-.5)*spreadH;
+  stardustP[i3+2]=(sd[i4+2]-.5)*4-2;
+
+  // Bird typhoon swirl — wild radius
+  const sa=sd[i4]*Math.PI*12+i*.004,sr=1.5+sd[i4+1]*7,sy=(sd[i4+2]-.5)*12;
   swirlP[i3]=Math.cos(sa)*sr;swirlP[i3+1]=sy;swirlP[i3+2]=Math.sin(sa)*sr-1;
+
+  // Reform small venus
   const rphi=Math.acos(1-2*(i+.5)/PC),rtheta=Math.PI*(3-Math.sqrt(5))*i;
   const rr=RF_R*(.88+sd[i4]*.14);
   reformP[i3]=rr*Math.sin(rphi)*Math.cos(rtheta);
   reformP[i3+1]=rr*Math.sin(rphi)*Math.sin(rtheta);
   reformP[i3+2]=rr*Math.cos(rphi);
+
   pos[i3]=venusP[i3];pos[i3+1]=venusP[i3+1];pos[i3+2]=venusP[i3+2];
 }
 
@@ -475,13 +525,13 @@ const mat=new THREE.ShaderMaterial({
     void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1.);float d=length(mv.xyz);
     float pulse=1.+.05*sin(uT*2.+position.x*3.+position.y*2.);
     gl_PointSize=size*pulse*uPR*(5.5/d);gl_PointSize=max(gl_PointSize,.1);
-    float br=dot(color,vec3(.3,.5,.2));vA=smoothstep(55.,2.,d)*(.4+br*.5);
+    float br=dot(color,vec3(.3,.5,.2));vA=smoothstep(55.,2.,d)*(.55+br*.55);
     gl_Position=projectionMatrix*mv;}`,
   fragmentShader:`
     varying vec3 vC;varying float vA;
     void main(){float d=length(gl_PointCoord-vec2(.5));if(d>.5)discard;
-    float core=smoothstep(.5,0.,d);float glow=smoothstep(.5,.12,d)*.2;
-    float a=(core+glow)*vA;vec3 fc=mix(vC,vec3(1.,.97,.88),core*.15);
+    float core=smoothstep(.5,0.,d);float glow=smoothstep(.5,.12,d)*.3;
+    float a=(core+glow)*vA;vec3 fc=mix(vC,vec3(1.,.97,.88),core*.2);
     gl_FragColor=vec4(fc,a);}`,
   transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
 });
@@ -493,12 +543,13 @@ let hexShown=false;
 scrollEl.addEventListener('scroll',function(){
   const max=scrollEl.scrollHeight-scrollEl.clientHeight;
   scroll=max>0?scrollEl.scrollTop/max:0;
-  heroText.style.opacity=Math.max(1-scroll*12,0);
-  heroText.style.transform='translateY('+(-scroll*200)+'px) scale('+(1-scroll*.6)+')';
-  scrollHint.style.opacity=Math.max(1-scroll*15,0);
-  // Hex grid fades in when swirl→reform begins
-  if(scroll>.18&&!hexShown){hexCanvas.classList.add('visible');hexShown=true}
-  if(scroll<.10&&hexShown){hexCanvas.classList.remove('visible');hexShown=false}
+  // Hero fades during disintegrate
+  heroText.style.opacity=Math.max(1-scroll*14,0);
+  heroText.style.transform='translateY('+(-scroll*250)+'px) scale('+(1-scroll*.7)+')';
+  scrollHint.style.opacity=Math.max(1-scroll*18,0);
+  // Hex grid fades in during stardust phase
+  if(scroll>.14&&!hexShown){hexCanvas.classList.add('visible');hexShown=true}
+  if(scroll<.08&&hexShown){hexCanvas.classList.remove('visible');hexShown=false}
 },{passive:true});
 
 if(!mob)window.addEventListener('mousemove',function(e){mx=(e.clientX/W-.5)*2});
@@ -530,24 +581,49 @@ function animate(){
     const s0=sd[i4],s1=sd[i4+1];
     let tx,ty,tz;
 
-    if(scroll<.08){
+    if(scroll<.06){
+      // ═══ PHASE 1: VENUS HERO ═══
       const vx=venusP[i3],vy=venusP[i3+1],vz=venusP[i3+2];
       tx=vx*cosR+vz*sinR+heroWX;ty=vy+heroWY;tz=-vx*sinR+vz*cosR;
-    }else if(scroll<.22){
-      const p=ss((scroll-.08)/.14);
+
+    }else if(scroll<.16){
+      // ═══ PHASE 2: DISINTEGRATE — explode outward into stardust ═══
+      const p=ss((scroll-.06)/.10);
       const vx=venusP[i3],vy=venusP[i3+1],vz=venusP[i3+2];
       const rvx=vx*cosR+vz*sinR+heroWX,rvy=vy+heroWY,rvz=-vx*sinR+vz*cosR;
+      // Target: stardust position
+      const dx=stardustP[i3],dy=stardustP[i3+1],dz=stardustP[i3+2];
+      // Early: explode outward from sphere center, then drift toward stardust
+      const exp=1+s0*3.0*Math.min(p*2.5,1);
+      const eX=rvx*exp,eY=rvy*exp,eZ=rvz*exp;
+      const driftBlend=ss(Math.max((p-.3)/.7,0));
+      tx=lerp(rvx,lerp(eX,dx,driftBlend),p);
+      ty=lerp(rvy,lerp(eY,dy,driftBlend),p);
+      tz=lerp(rvz,lerp(eZ,dz,driftBlend),p);
+
+    }else if(scroll<.45){
+      // ═══ PHASE 3: STARDUST — twinkling drift, stats fade in ═══
+      const dx=stardustP[i3],dy=stardustP[i3+1],dz=stardustP[i3+2];
+      // Gentle drift animation
+      tx=dx+Math.sin(time*.15+s0*6)*.3;
+      ty=dy+Math.cos(time*.12+s1*5)*.25;
+      tz=dz+Math.sin(time*.1+s0*4)*.15;
+
+    }else if(scroll<.62){
+      // ═══ PHASE 4: BIRD SWIRL — stardust pulls into typhoon ═══
+      const p=ss((scroll-.45)/.17);
+      const dx=stardustP[i3]+Math.sin(time*.15+s0*6)*.3;
+      const dy=stardustP[i3+1]+Math.cos(time*.12+s1*5)*.25;
+      const dz=stardustP[i3+2]+Math.sin(time*.1+s0*4)*.15;
+      // Swirl target — rotating vortex
       const sx=swirlP[i3]*cosS+swirlP[i3+2]*sinS;
       const sy=swirlP[i3+1];
       const sz2=-swirlP[i3]*sinS+swirlP[i3+2]*cosS;
-      const exp=1+s0*1.2*Math.min(p*3,1);
-      const eX=rvx*exp,eY=rvy*exp*.5,eZ=rvz*exp*.5;
-      const sB=ss(Math.max((p-.2)/.8,0));
-      tx=lerp(rvx,lerp(eX,sx,sB),p);
-      ty=lerp(rvy,lerp(eY,sy,sB),p);
-      tz=lerp(rvz,lerp(eZ,sz2,sB),p);
-    }else if(scroll<.42){
-      const p=ss((scroll-.22)/.20);
+      tx=lerp(dx,sx,p);ty=lerp(dy,sy,p);tz=lerp(dz,sz2,p);
+
+    }else if(scroll<.78){
+      // ═══ PHASE 5: REFORM — swirl converges to small Venus ═══
+      const p=ss((scroll-.62)/.16);
       const sx=swirlP[i3]*cosS+swirlP[i3+2]*sinS;
       const sy=swirlP[i3+1];
       const sz2=-swirlP[i3]*sinS+swirlP[i3+2]*cosS;
@@ -555,20 +631,26 @@ function animate(){
       tx=lerp(sx,rx*cosR+rz*sinR+rfWX,p);
       ty=lerp(sy,ry+rfWY,p);
       tz=lerp(sz2,-rx*sinR+rz*cosR,p);
+
     }else{
+      // ═══ PHASE 6: HOLD ═══
       const rx=reformP[i3],ry=reformP[i3+1],rz=reformP[i3+2];
       tx=rx*cosR+rz*sinR+rfWX;ty=ry+rfWY;tz=-rx*sinR+rz*cosR;
     }
 
-    const spd=scroll>.08&&scroll<.45?.1+s0*.04:.04+s0*.01;
+    // Spring speed — fast during transitions, gentle during stardust/hold
+    const inTransition=scroll>.06&&scroll<.18||scroll>.43&&scroll<.80;
+    const spd=inTransition?.1+s0*.04:.03+s0*.01;
     pos[i3]+=(tx-pos[i3])*spd;
     pos[i3+1]+=(ty-pos[i3+1])*spd;
     pos[i3+2]+=(tz-pos[i3+2])*spd;
 
+    // ═══ COLOR ═══
     const px=pos[i3],py=pos[i3+1],pz=pos[i3+2];
     const pL=Math.sqrt(px*px+py*py+pz*pz)||1;
 
-    if(scroll<.12){
+    if(scroll<.08){
+      // Venus planet shading
       const nx=px/pL,ny=py/pL,nz=pz/pL;
       const dot=nx*wl.x+ny*wl.y+nz*wl.z;
       const li=dot*.5+.5;
@@ -579,13 +661,39 @@ function animate(){
       else if(li>.25){const t=(li-.25)/.4;cr=lerp(VC.deep[0],lerp(VC.mid[0],lerp(VC.band2[0],VC.band1[0],bw),.4),t);cg=lerp(VC.deep[1],lerp(VC.mid[1],lerp(VC.band2[1],VC.band1[1],bw),.4),t);cb=lerp(VC.deep[2],lerp(VC.mid[2],lerp(VC.band2[2],VC.band1[2],bw),.4),t)}
       else{const t=li/.25;cr=lerp(VC.shadow[0],VC.deep[0],t);cg=lerp(VC.shadow[1],VC.deep[1],t);cb=lerp(VC.shadow[2],VC.deep[2],t)}
       col[i3]=cr*sh;col[i3+1]=cg*sh;col[i3+2]=cb*sh;
-    }else if(scroll<.30){
+
+    }else if(scroll<.20){
+      // Disintegrate — venus colors dissolving to golden dust
+      const dp=ss((scroll-.08)/.12);
+      const nx=px/pL,ny=py/pL,nz=pz/pL;
+      const dot=nx*wl.x+ny*wl.y+nz*wl.z;
+      const li=dot*.5+.5;
+      let vr=li>.5?lerp(VC.mid[0],VC.bright[0],(li-.5)*2):lerp(VC.deep[0],VC.mid[0],li*2);
+      let vg=li>.5?lerp(VC.mid[1],VC.bright[1],(li-.5)*2):lerp(VC.deep[1],VC.mid[1],li*2);
+      let vb=li>.5?lerp(VC.mid[2],VC.bright[2],(li-.5)*2):lerp(VC.deep[2],VC.mid[2],li*2);
+      // Fade to warm golden dust
+      const tw=.4+.6*(.5+.5*Math.sin(time*3+s0*10));
+      col[i3]=lerp(vr,lerp(.7,1,tw)*.9,dp);
+      col[i3+1]=lerp(vg,lerp(.5,.85,tw)*.75,dp);
+      col[i3+2]=lerp(vb,lerp(.1,.4,tw)*.35,dp);
+
+    }else if(scroll<.45){
+      // Stardust — soft twinkling golden
+      const twinkle=.3+.7*(.5+.5*Math.sin(time*2.5+s0*20+s1*14));
+      col[i3]=lerp(.55,.95,twinkle)*(.8+s0*.15);
+      col[i3+1]=lerp(.4,.8,twinkle)*(.65+s0*.1);
+      col[i3+2]=lerp(.08,.3,twinkle)*.35;
+
+    }else if(scroll<.65){
+      // Bird swirl — bright energetic golden streaks
       const tw=.3+.7*(.5+.5*Math.sin(time*4+s0*16+s1*10));
       col[i3]=lerp(.5,1,tw)*(.85+s0*.1);
       col[i3+1]=lerp(.3,.85,tw)*(.7+s0*.08);
       col[i3+2]=lerp(.06,.35,tw)*.4;
+
     }else{
-      const rp=ss(Math.min((scroll-.30)/.15,1));
+      // Reform → venus shading
+      const rp=ss(Math.min((scroll-.65)/.15,1));
       const tw=.3+.7*(.5+.5*Math.sin(time*3+s0*14));
       const dr=lerp(.5,1,tw)*.85,dg=lerp(.3,.85,tw)*.7,db=lerp(.06,.35,tw)*.4;
       const nx=px/pL,ny=py/pL,nz=pz/pL;
